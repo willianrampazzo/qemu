@@ -9,8 +9,9 @@
 # later.  See the COPYING file in the top-level directory.
 
 import os
+import re
 
-from avocado_qemu import Test, BUILD_DIR
+from avocado_qemu import Test, BUILD_DIR, SSH_KEY_FROM_QEMU_SOURCE
 
 from qemu.accel import kvm_available
 from qemu.accel import tcg_available
@@ -33,6 +34,12 @@ class BootLinux(Test):
 
     timeout = 900
     chksum = None
+    guest_user = 'user01'
+    guest_password = 'password'
+    #: SSH public key file path
+    ssh_pub_key = None
+    #: SSH private key file path
+    ssh_pvt_key = None
 
     def setUp(self):
         super(BootLinux, self).setUp()
@@ -71,13 +78,20 @@ class BootLinux(Test):
             self.cancel('Failed to download/prepare boot image')
 
     def prepare_cloudinit(self):
+        if self.ssh_pub_key is None:
+            (self.ssh_pub_key, self.ssh_pvt_key) = self.default_ssh_key_pair()
+        with open(self.ssh_pub_key, 'r') as key_file:
+            authorized_key = key_file.readline().strip()
+        self.log.info('Set SSH public key: %s' % self.ssh_pub_key)
+
         self.log.info('Preparing cloudinit image')
         try:
             cloudinit_iso = os.path.join(self.workdir, 'cloudinit.iso')
             self.phone_home_port = network.find_free_port()
             cloudinit.iso(cloudinit_iso, self.name,
-                          username='root',
-                          password='password',
+                          username=self.guest_user,
+                          password=self.guest_password,
+                          authorized_key=authorized_key,
                           # QEMU's hard coded usermode router address
                           phone_home_host='10.0.2.2',
                           phone_home_port=self.phone_home_port)
@@ -93,6 +107,31 @@ class BootLinux(Test):
         console_drainer.start()
         self.log.info('VM launched, waiting for boot confirmation from guest')
         cloudinit.wait_for_phone_home(('0.0.0.0', self.phone_home_port), self.name)
+
+    def default_ssh_key_pair(self):
+        """
+        Get a pair of public/private ssh keys.
+
+        Lookup for a suitable pair of ssh keys using the heuristic:
+        - First check the test parameter 'authorized_key' was
+          given
+        - Otherwise get the keys versioned in QEMU's source code
+
+        Assume public key filename end with '.pub' and the counterpart
+        private key file is in the same directory.
+        """
+        pub_key = self.params.get('authorized_key',
+                                  default=SSH_KEY_FROM_QEMU_SOURCE)
+
+        if not os.path.isfile(pub_key):
+            self.cancel("ssh public key %s not exist" % pub_key)
+
+        # Expect private key same path but without .pub name extension.
+        pvt_key = re.sub('.pub$', '', pub_key)
+        if not os.path.isfile(pvt_key):
+            self.cancel("ssh private key %s not exist" % pvt_key)
+
+        return (pub_key, pvt_key)
 
 
 class BootLinuxX8664(BootLinux):

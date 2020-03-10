@@ -30,6 +30,11 @@ if os.path.islink(os.path.dirname(os.path.dirname(__file__))):
 else:
     SOURCE_DIR = BUILD_DIR
 
+#: The QEMU provided ssh key (public) which can be used on tests (see the
+#: accompanying README file for further notes).
+SSH_KEY_FROM_QEMU_SOURCE = os.path.join(SOURCE_DIR, 'tests/keys/id_rsa.pub') \
+        if SOURCE_DIR else ''
+
 sys.path.append(os.path.join(SOURCE_DIR, 'python'))
 
 from qemu.machine import QEMUMachine

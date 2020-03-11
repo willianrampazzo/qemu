@@ -36,6 +36,12 @@ class BootLinux(Test):
     chksum = None
     guest_user = 'user01'
     guest_password = 'password'
+    #: Whether configure a network interface for ssh connection.
+    enable_ssh = False
+    #: Localhost address.
+    ssh_host = '127.0.0.1'
+    #: Localhost port for ssh connection to the guest.
+    ssh_port = None
     #: SSH public key file path
     ssh_pub_key = None
     #: SSH private key file path
@@ -47,6 +53,8 @@ class BootLinux(Test):
         self.vm.add_args('-m', '1024')
         self.prepare_boot()
         self.prepare_cloudinit()
+        if self.enable_ssh:
+            self.prepare_ssh()
 
     def prepare_boot(self):
         self.log.debug('Looking for and selecting a qemu-img binary to be '
@@ -133,6 +141,18 @@ class BootLinux(Test):
 
         return (pub_key, pvt_key)
 
+    def prepare_ssh(self):
+        """
+        Configure a network interface on guest that forwards port 22
+        to `self.ssh_port` port on localhost.
+        """
+        self.ssh_port = network.find_free_port()
+        self.vm.add_args('-netdev',
+                         'user,id=user,hostfwd=tcp:%s:%d-:22' % (self.ssh_host,
+                                                                 self.ssh_port))
+        self.vm.add_args('-device', 'virtio-net-pci,netdev=user')
+        self.log.info('Prepared for ssh connection on %s:%s' % (self.ssh_host,
+                                                                self.ssh_port))
 
 class BootLinuxX8664(BootLinux):
     """

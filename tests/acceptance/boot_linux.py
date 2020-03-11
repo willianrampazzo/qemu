@@ -18,6 +18,7 @@ from qemu.accel import tcg_available
 
 from avocado.utils import cloudinit
 from avocado.utils import network
+from avocado.utils import ssh
 from avocado.utils import vmimage
 from avocado.utils import datadrainer
 from avocado.utils.path import find_command
@@ -55,6 +56,8 @@ class BootLinux(Test):
         self.prepare_cloudinit()
         if self.enable_ssh:
             self.prepare_ssh()
+        # Hold a ssh session to the guest.
+        self._ssh_session = None
 
     def prepare_boot(self):
         self.log.debug('Looking for and selecting a qemu-img binary to be '
@@ -153,6 +156,25 @@ class BootLinux(Test):
         self.vm.add_args('-device', 'virtio-net-pci,netdev=user')
         self.log.info('Prepared for ssh connection on %s:%s' % (self.ssh_host,
                                                                 self.ssh_port))
+
+    @property
+    def ssh_session(self):
+        """
+        Get the SSH session to the guest.
+        """
+        if self._ssh_session is None:
+            session = ssh.Session(self.ssh_host, self.ssh_port,
+                                  user=self.guest_user, key=self.ssh_pvt_key)
+            if not session.connect():
+                self.fail('Unabled to establish an ssh session to the guest')
+            self._ssh_session = session
+        return self._ssh_session
+
+    def tearDown(self):
+        if self._ssh_session:
+            self._ssh_session.quit()
+        super(BootLinux, self).tearDown()
+
 
 class BootLinuxX8664(BootLinux):
     """
